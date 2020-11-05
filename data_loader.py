@@ -9,14 +9,17 @@ import os
 import xlrd
 
 class TimeStampDataset(Dataset):
-  def __init__(self, xlsx_path, root_path, sigma, fps=8, frames=24, frame_overlaps=8):
+  def __init__(self, xlsx_path, root_path, sigma, image_size, fps=8, frames=24, frame_overlaps=8):
     self.root_path = root_path
     self.sigma = sigma
     self.fps = fps
     self.frames = frames
     self.frame_overlaps = frame_overlaps
 
-    self.to_tensor = transforms.ToTensor()
+    self.transform = transforms.Compose([
+      transforms.Resize(image_size),
+      transforms.ToTensor()
+    ])
 
     wb = xlrd.open_workbook(xlsx_path)
     sheet = wb.sheet_by_index(0)
@@ -93,14 +96,14 @@ class TimeStampDataset(Dataset):
 
     images = []
     for frame in range(frame_start, frame_end):
-      images.append(self.to_tensor(Image.open(os.path.join(self.root_path, row_labels['Video_name'], f'{str(frame + 1).zfill(5)}.jpg'))))
+      images.append(self.transform(Image.open(os.path.join(self.root_path, row_labels['Video_name'], f'{str(frame + 1).zfill(5)}.jpg'))))
 
     return torch.stack(images, dim=1), self.label[:, frame_offset + frame_start:frame_offset + frame_end]
 
 if __name__ == '__main__':
   import matplotlib.pyplot as plt
 
-  dataset = TimeStampDataset('/content/drive/My Drive/video_labeling.xlsx', '/content/drive/My Drive/해커톤2020/AI 학습용 구축 원천 데이터/찐뉴스/news_frame/', 3.0)
+  dataset = TimeStampDataset('/content/drive/My Drive/video_labeling.xlsx', '/content/drive/My Drive/해커톤2020/AI 학습용 구축 원천 데이터/찐뉴스/news_frame/', 3.0, (200, 200))
   dataloader = DataLoader(dataset, batch_size=3, shuffle=True)
 
   print(len(dataset))
@@ -110,9 +113,11 @@ if __name__ == '__main__':
       fig, axes = plt.subplots(1, 24, figsize=(72, 3))
       for ax, img in zip(axes, dat.permute(1, 2, 3, 0)):
         ax.imshow(img)
+        ax.axis('off')
       plt.show()
       fig, axes = plt.subplots(4, 1, figsize=(10, 3))
       for ax, img in zip(axes, lbl):
         ax.imshow(img.view(1, 24), vmin=0, vmax=1)
+        ax.axis('off')
       plt.show()
     break
