@@ -97,7 +97,7 @@ def train():
             # labels 를 1차원으로 펴준다. --> [0 ~ n 프레임의 클래스 0 일 확률 쭉 ... ,
             #                                         0 ~ n 프레임의 클래스 1 일 확률 쭉 ... ,
             #                                               0 ~ n 프레임의 클래스 2 일 확률 쭉 ..., ...]
-            labels = labels.view(batch_size, -1)    # shape = (batch_size, 4*frames)
+            labels = labels.view(labels.shape[0], -1)    # shape = (batch_size, 4*frames)
 
             
             optimizer.zero_grad()
@@ -145,7 +145,7 @@ def train():
         for inputs, labels in tqdm(val_loader):
             inputs = Variable(inputs, requires_grad=True).to(device=device, dtype=torch.float32)
             labels = Variable(labels).to(device=device, dtype=torch.float32)
-            labels = labels.view(batch_size, -1)    # shape = (batch_size, 4*frames)
+            labels = labels.view(labels.shape[0], -1)    # shape = (batch_size, 4*frames)
             
             with torch.no_grad():
                 outputs = net(inputs)
