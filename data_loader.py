@@ -9,23 +9,25 @@ import os
 import xlrd
 
 class TimeStampDataset(Dataset):
-  def __init__(self, xlsx_path, root_path, sigma, image_size, fps=8, frames=24, frame_overlaps=8):
+  def __init__(self, xlsx_path, root_path, sigma, transform=None, image_size=None, fps=8, frames=24, frame_overlaps=8):
     self.root_path = root_path
     self.sigma = sigma
     self.fps = fps
     self.frames = frames
     self.frame_overlaps = frame_overlaps
 
-    self.transform = transforms.Compose([
-      transforms.Resize(image_size),
-      transforms.ToTensor()
-    ])
+    self.transform = []
+    if transform is not None:
+      self.transform.append(transform)
+    if image_size is not None:
+      self.transform.append(transforms.Resize(image_size))
+    self.transform.append(transforms.ToTensor())
+    self.transform = transforms.Compose(self.transform)
 
     wb = xlrd.open_workbook(xlsx_path)
     sheet = wb.sheet_by_index(0)
     headers = [sheet.cell_value(0, col) for col in range(5)]
-    headers
-
+    
     self.labels = []
 
     row = 1
@@ -103,7 +105,7 @@ class TimeStampDataset(Dataset):
 if __name__ == '__main__':
   import matplotlib.pyplot as plt
 
-  dataset = TimeStampDataset('/content/drive/My Drive/video_labeling.xlsx', '/content/drive/My Drive/해커톤2020/AI 학습용 구축 원천 데이터/찐뉴스/news_frame/', 3.0, (200, 200))
+  dataset = TimeStampDataset('/content/drive/My Drive/video_labeling.xlsx', '/content/drive/My Drive/해커톤2020/AI 학습용 구축 원천 데이터/찐뉴스/news_frame/', 3.0, image_size=(200, 200))
   dataloader = DataLoader(dataset, batch_size=3, shuffle=True)
 
   print(len(dataset))
