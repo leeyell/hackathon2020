@@ -129,6 +129,7 @@ def train():
                 'state_dict': net.state_dict(),
                 'opt_dict': optimizer.state_dict(),
             }, os.path.join(save_path, 'train_epoch-' + str(epoch) + '-best_model.pth'))
+            best_acc_on_train = epoch_acc
 
         print("[Train] Epoch: {}/{} Loss: {} Acc: {}".format(epoch+1, nEpochs, epoch_loss, epoch_acc))
         stop_time = timeit.default_timer()
@@ -168,6 +169,7 @@ def train():
                 'state_dict': net.state_dict(),
                 'opt_dict': optimizer.state_dict(),
             }, os.path.join(save_path, 'test_epoch-' + str(epoch) + '-best_model.pth'))
+            best_acc_on_test = apoch_acc
 
         print("[test] Epoch: {}/{} Loss: {} Acc: {}".format(epoch+1, nEpochs, epoch_loss, epoch_acc))
         stop_time = timeit.default_timer()
