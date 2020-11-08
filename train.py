@@ -176,15 +176,29 @@ def train():
         for inputs, labels in tqdm(val_loader):
             inputs = Variable(inputs, requires_grad=True).to(device=device, dtype=torch.float32)
             labels = Variable(labels).to(device=device, dtype=torch.float32)
-            labels = labels.view(labels.shape[0], -1)    # shape = (batch_size, 4*frames)
             
             with torch.no_grad():
                 outputs = net(inputs)
+            
+            outputs = outputs.reshape(labels.shape[0], labels.shape[1], labels.shape[2])
             probs = sigmoid(outputs)
-            loss = criterion(probs, labels)
 
+
+            ################## Loss 측정
+            loss = criterion(probs, labels)
             running_loss += loss.item() * inputs.size(0)
-            running_corrects += torch.sum(abs(probs - labels.data) < threshold)
+
+
+
+            ################## Accuracy 측정
+            labels = torch.max(labels, dim=2)[0]
+            labels = torch.max(labels, dim=1)[1]
+
+            outputs = torch.max(probs, dim=2)[0]
+            outputs = torch.tensor([output.argmax() if output.max() > threshold else 4 for output in outputs])
+            
+            outputs = outputs.to(device=device, dtype=torch.float32)
+            running_corrects += torch.sum(outputs == labels)
 
 
         epoch_loss = running_loss / len(val_loader.dataset)
