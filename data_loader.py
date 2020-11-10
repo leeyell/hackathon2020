@@ -9,7 +9,7 @@ import os
 import xlrd
 
 class TimeStampDataset(Dataset):
-  def __init__(self, xlsx_path, root_path, sigma, transform=None, image_size=None, fps=8, frames=24, frame_overlaps=8):
+  def __init__(self, xlsx_path, root_path, sigma, transform=None, image_size=None, cut_ratio=None, threshold=0.2, fps=8, frames=24, frame_overlaps=8):
     self.root_path = root_path
     self.sigma = sigma
     self.fps = fps
@@ -45,7 +45,6 @@ class TimeStampDataset(Dataset):
       break
 
     self.total_frame_count = 0
-    self.total_data_count = 0
 
     for row_labels in self.labels:
       row_labels['Video_Id'] = int(row_labels['Video_Id']) if row_labels['Video_Id'] != '' else -1
@@ -54,7 +53,7 @@ class TimeStampDataset(Dataset):
       time_stamps_split = map(lambda x: x.split(':'), time_stamps)
       row_labels['Time_stamp'] = list(map(lambda x: int(x[0]) * 60 + int(x[1]), time_stamps_split))
       row_labels['time_stamp_class'] = list(map(int, filter(lambda x: x != '', row_labels['time_stamp_class'].split(','))))
-      
+
       video_name = row_labels['Video_name']
       ext = video_name.rfind('.')
       if ext > 0:
@@ -65,21 +64,43 @@ class TimeStampDataset(Dataset):
       row_labels['data_count'] = int(np.ceil((row_labels['frames'] - self.frame_overlaps) / (self.frames - self.frame_overlaps)))
 
       self.total_frame_count += row_labels['frames']
-      self.total_data_count += row_labels['data_count']
 
     self.label = torch.zeros(4, self.total_frame_count)
     
+    self.total_data_count = 0
+    self.indices = []
+
     frame_offset = 0
     for row_labels in self.labels:
       timestamps = row_labels['Time_stamp']
       ts_classes = row_labels['time_stamp_class']
       frames = row_labels['frames']
+      data_count = row_labels['data_count']
 
       frame_indices = torch.arange(frames, dtype=torch.float)
       for i in range(len(timestamps)):
         self.label[ts_classes[i], frame_offset:frame_offset + frames] += torch.exp(-0.5 * (((timestamps[i] + 0.5) * self.fps - frame_indices) / self.sigma) ** 2)
+
+      cur_indices = [i for i in range(data_count)]
+
+      if cut_ratio is not None:
+        no_cuts = []
+        for idx in range(data_count):
+          offset = frame_offset + (self.frames - self.frame_overlaps) * idx
+          if self.label[:, offset:offset + self.frames].max() < threshold:
+            no_cuts.append(idx)
+        removed = int(round(len(no_cuts) - (data_count - len(no_cuts)) / cut_ratio))
+        if removed > 0:
+          for i in range(removed):
+            cur_indices.remove(no_cuts[i * len(no_cuts) // removed])
+          row_labels['data_count'] = data_count = data_count - removed
+
+      self.indices.append(cur_indices)
+
       frame_offset += frames
 
+      self.total_data_count += data_count
+    
     self.label = torch.clamp(self.label, 0.0, 1.0)
 
   def __len__(self):
@@ -87,15 +108,17 @@ class TimeStampDataset(Dataset):
   
   def __getitem__(self, idx):
     offset, frame_offset = 0, 0
-    for row_labels in self.labels:
+    for row_index, row_labels in enumerate(self.labels):
       if idx - offset < row_labels['data_count']:
         break
       offset += row_labels['data_count']
       frame_offset += row_labels['frames']
 
-    frame_end = min((self.frames - self.frame_overlaps) * (idx - offset + 1) + self.frame_overlaps, row_labels['frames'])
+    index = self.indices[row_index][idx - offset]
+    
+    frame_end = min((self.frames - self.frame_overlaps) * (index + 1) + self.frame_overlaps, row_labels['frames'])
     frame_start = frame_end - self.frames
-
+    
     images = []
     for frame in range(frame_start, frame_end):
       images.append(self.transform(Image.open(os.path.join(self.root_path, row_labels['Video_name'], f'{str(frame + 1).zfill(5)}.jpg'))))
@@ -105,21 +128,33 @@ class TimeStampDataset(Dataset):
 if __name__ == '__main__':
   import matplotlib.pyplot as plt
 
-  dataset = TimeStampDataset('/content/drive/My Drive/video_labeling.xlsx', '/content/drive/My Drive/해커톤2020/AI 학습용 구축 원천 데이터/찐뉴스/news_frame/', 3.0, image_size=(200, 200))
-  dataloader = DataLoader(dataset, batch_size=3, shuffle=True)
+  dataset = TimeStampDataset('./video_labeling.xlsx', 'C:/news_frame', 3.0, image_size=(200, 200), cut_ratio=1.0, threshold=0.2)
+  dataloader = DataLoader(dataset, batch_size=10, shuffle=True)
 
   print(len(dataset))
 
+  cuts, nocuts = 0, 0
+  i = 0
+
   for data, label in dataloader:
-    for dat, lbl in zip(data, label):
-      fig, axes = plt.subplots(1, 24, figsize=(72, 3))
+    cur_nocuts = torch.count_nonzero(label.max(dim=2).values.max(dim=1).values < 0.2)
+    nocuts += cur_nocuts
+    cuts += label.size(0) - cur_nocuts
+    
+    i += 1
+    print(f'{i}/{len(dataloader)}')
+    print(f'{cuts}/{nocuts}')
+
+    '''for dat, lbl in zip(data, label):
+      fig, axes = plt.subplots(1, 24, figsize=(10, 3))
       for ax, img in zip(axes, dat.permute(1, 2, 3, 0)):
         ax.imshow(img)
         ax.axis('off')
-      plt.show()
       fig, axes = plt.subplots(4, 1, figsize=(10, 3))
       for ax, img in zip(axes, lbl):
         ax.imshow(img.view(1, 24), vmin=0, vmax=1)
         ax.axis('off')
-      plt.show()
-    break
+    plt.show()
+    break'''
+
+  print(cuts, nocuts)
