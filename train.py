@@ -4,7 +4,6 @@ from datetime import datetime
 import os
 import glob
 from tqdm import tqdm
-import pickle
 
 import torch
 from tensorboardX import SummaryWriter
@@ -15,21 +14,21 @@ from sklearn.model_selection import train_test_split
 
 
 import model
-from data_loader import TimeStampDataset
-# from convert_from_caffe2 import load_checkpoint
+# from data_loader import TimeStampDataset
+from range_data_loader import RangeDataset
+
 
 
 
 
 ############### 하이퍼 파라미터
-nEpochs = 100       # Number of epochs for training
+nEpochs = 30       # Number of epochs for training
 snapshot = 3       # Store a model every snapshot epochs
 lr = 0.03
 batch_size = 10
-threshold = 0.2        # 클래스 0 ~ 3 중 하나를 예측하는 가장 높은 확률이 이 값 미만이면 해당 예측값은 해당되는 class 가 없다는, 즉 클래스 4 를 예측하는 것으로 친다.
+threshold = 0.95
 
-
-save_path = "./save/1108_22_20"
+save_path = "./save/1110_16_00"
 dataset_path = "D:/news_frame"
 xlsx_path = "./video_labeling.xlsx"
 log_dir = os.path.join(save_path, 'logs')
@@ -46,21 +45,20 @@ def train():
 
 
     ############### 모델 생성
-    net = model.resnet50(class_num=4)     # 앵커, 기자, 인터뷰, 자료화면에 대한 타임 스탬프 확률
+    net = model.resnet50(class_num=3)     # 앵커, 기자, 인터뷰, (자료화면->지금은 나가리)에 대한 타임 스탬프 확률
 
-    # pre-trained model 불러오기
-    # pretrained_path = "SLOWFAST_4x16_R50.pkl" 조졌음 이건 망했어
 
     print('Total params: %.2fM' % (sum(p.numel() for p in net.parameters()) / 1000000.0))
 
 
     # Loss Function
-    sigmoid = nn.Sigmoid()
+    softmax = nn.Softmax(dim=2)
     criterion = nn.BCELoss()
+    
     # Optimizer
     optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=5e-4)
     # Scheduler
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5)  # 20 에폭마다 learning rate 0.5배
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.5)
 
 
     net.to(device)
@@ -70,15 +68,16 @@ def train():
 
 
     ############### Dataset, DataLoader 생성
-    dataset = TimeStampDataset(xlsx_path=xlsx_path, root_path=dataset_path, sigma=3.0, image_size=(180,120))
+    # dataset = TimeStampDataset(xlsx_path=xlsx_path, root_path=dataset_path, sigma=3.0, image_size=(180,120))
+    dataset = RangeDataset(xlsx_path=xlsx_path, root_path=dataset_path, sigma=6.0, spacing=8, image_size=(180,120))
     train_size = int(len(dataset) * 0.8)
     test_size = int(len(dataset) * 0.2)
-    train_dataset, val_dataset = random_split(dataset, [train_size, test_size])
+    train_dataset, val_dataset = random_split(dataset, [train_size, test_size], generator=torch.Generator().manual_seed(0))
     print(f"Total number of train datas : {len(train_dataset)}")
     print(f"Total number of validation datas : {len(val_dataset)}")
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
     print(f"Total number of train batches : {len(train_loader)}")
     print(f"Total number of train batches : {len(val_loader)}")
 
@@ -98,22 +97,17 @@ def train():
         for inputs, labels in tqdm(train_loader):
             inputs = Variable(inputs, requires_grad=True).to(device=device, dtype=torch.float32)
             labels = Variable(labels).to(device=device, dtype=torch.float32)
-            #### labels 를 1차원으로 펴준다. --> [0 ~ n 프레임의 클래스 0 일 확률 쭉 ... ,
-            ####                                         0 ~ n 프레임의 클래스 1 일 확률 쭉 ... ,
-            ####                                               0 ~ n 프레임의 클래스 2 일 확률 쭉 ..., ...]
-            #### labels = labels.view(labels.shape[0], -1)    # shape = (batch_size, 4*frames)
-            
+
+
             optimizer.zero_grad()
 
             outputs = net(inputs)
-
-            # outputs 은 지금 이 꼴로 나옴 --> 배치 개수 x [0 ~ n 프레임의 클래스 0 일 확률 쭉 ... ,
-            #                                                   0 ~ n 프레임의 클래스 1 일 확률 쭉 ... ,
-            #                                                           0 ~ n 프레임의 클래스 2 일 확률 쭉 ..., ...]    --> (Batch, Class*Frame)
             outputs = outputs.reshape(labels.shape[0], labels.shape[1], labels.shape[2])        # labels 모양이랑 맞춰주고 --> (Batch, Class, Frame)
-            probs = sigmoid(outputs)
 
+            probs = softmax(outputs)
 
+            labels = torch.clamp(labels, 0.0, 1.0)
+            probs = torch.clamp(probs, 0.0, 1.0)
 
             ################## Loss 측정
             loss = criterion(probs, labels)
@@ -121,22 +115,13 @@ def train():
 
 
             ################## Accuracy 측정
-            # labels 에서 각 클래스 별 가장 높은 확률들만 가져옴
-            # [class 0 을 나타내는 확률 중 가장 높은 값, class 1 을 나타내는 확률 중 가장 높은 값, ... ] --> (10, 4)
-            labels = torch.max(labels, dim=2)[0]        # 여기서 labels 값은 각 클래스 별 가장 높은 확률임
-            # 그 중에서도 제일 높은 확률을 갖는 class 가 해당 프레임 시퀀스의 class 로 결정   --> (10)
-            labels = torch.max(labels, dim=1)[1]        # 여기서 labels 값은 클래스 그 자체임
+            labels_mean_max = labels.mean(dim=2).max(dim=1)
+            labels = torch.where(labels_mean_max.values > threshold, labels_mean_max.indices, torch.sum(labels[:, :, 1:] - labels[:, :, :-1], dim=2).argmax(dim=1))
+            probs_mean_max = probs.mean(dim=2).max(dim=1)
+            pred_labels = torch.where(probs_mean_max.values > threshold, probs_mean_max.indices, torch.sum(probs[:, :, 1:] - probs[:, :, :-1], dim=2).argmax(dim=1))
 
-            # outputs 에서 각 클래스 별 가장 높은 확률들만 가져옴
-            # [class 0 을 나타내는 확률 중 가장 높은 값, class 1 을 나타내는 확률 중 가장 높은 값, ... ] --> (10, 4)
-            outputs = torch.max(probs, dim=2)[0]
-            # 어떤 class 인지는 몰라도... 가장 높은 확률값인데? threshold 이상의 확률이 아니라면 아무 클래스도 아니라는... 4 의 class 를 부여
-            # threshold 를 넘는 확률값이라면 그 class 를 가져옴 (argmax = 클래스니까 인덱스를 가져와야 함)
-            outputs = torch.tensor([output.argmax() if output.max() > threshold else 4 for output in outputs])      # --> (10)
-            
-            outputs = outputs.to(device=device, dtype=torch.float32)
-            running_corrects += torch.sum(outputs == labels)
 
+            running_corrects += torch.sum(pred_labels == labels)
 
             
             loss.backward()
@@ -146,12 +131,11 @@ def train():
         epoch_loss = running_loss / len(train_loader.dataset)
         epoch_acc = running_corrects.double() / len(train_loader.dataset)
 
-        # if phase == 'train':
+
         writer.add_scalar('data/train_loss_epoch', epoch_loss, epoch)
         writer.add_scalar('data/train_acc_epoch', epoch_acc, epoch)
-        # else:
-        #     writer.add_scalar('data/val_loss_epoch', epoch_loss, epoch)
-        #     writer.add_scalar('data/val_acc_epoch', epoch_acc, epoch)
+        writer.add_scalar('data/learning_rate', lr, epoch)
+
 
         if epoch_acc > best_acc_on_train:
             torch.save({
@@ -181,7 +165,7 @@ def train():
                 outputs = net(inputs)
             
             outputs = outputs.reshape(labels.shape[0], labels.shape[1], labels.shape[2])
-            probs = sigmoid(outputs)
+            probs = softmax(outputs)
 
 
             ################## Loss 측정
@@ -191,14 +175,13 @@ def train():
 
 
             ################## Accuracy 측정
-            labels = torch.max(labels, dim=2)[0]
-            labels = torch.max(labels, dim=1)[1]
-
-            outputs = torch.max(probs, dim=2)[0]
-            outputs = torch.tensor([output.argmax() if output.max() > threshold else 4 for output in outputs])
+            labels_mean_max = labels.mean(dim=2).max(dim=1)
+            labels = torch.where(labels_mean_max.values > threshold, labels_mean_max.indices, torch.sum(labels[:, :, 1:] - labels[:, :, :-1], dim=2).argmax(dim=1))
+            probs_mean_max = probs.mean(dim=2).max(dim=1)
+            pred_labels = torch.where(probs_mean_max.values > threshold, probs_mean_max.indices, torch.sum(probs[:, :, 1:] - probs[:, :, :-1], dim=2).argmax(dim=1))
             
-            outputs = outputs.to(device=device, dtype=torch.float32)
-            running_corrects += torch.sum(outputs == labels)
+            running_corrects += torch.sum(pred_labels == labels)
+
 
 
         epoch_loss = running_loss / len(val_loader.dataset)
@@ -219,6 +202,7 @@ def train():
         stop_time = timeit.default_timer()
         print("Execution time: " + str(stop_time - start_time) + "\n")
 
+        scheduler.step()
 
 
     writer.close()
