@@ -93,7 +93,8 @@ class RangeDataset(Dataset):
         self.label[ts_classes[i], frame_offset:frame_offset + frames] += torch.exp(-0.5 * (((timestamps[i + 1] + 0.5) * self.fps - spacing - frame_indices) / self.sigma) ** 2)
       frame_offset += frames
 
-    self.label /= self.label.sum(dim=0, keepdim=True)
+    class_sum = self.label.sum(dim=0, keepdim=True)
+    self.label /= torch.max(class_sum, torch.full_like(class_sum, 1e-8))
 
   def __len__(self):
     return self.total_data_count
@@ -125,6 +126,7 @@ if __name__ == '__main__':
 
   for data, label in dataloader:
     for dat, lbl in zip(data, label):
+      print(lbl)
       fig, axes = plt.subplots(1, 24, figsize=(10, 1))
       for ax, img in zip(axes, dat.permute(1, 2, 3, 0)):
         ax.imshow(img)
