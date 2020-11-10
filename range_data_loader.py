@@ -87,14 +87,14 @@ class RangeDataset(Dataset):
       frame_indices = torch.arange(frames, dtype=torch.float)
       for i in range(len(timestamps) - 1):
         self.label[ts_classes[i], frame_offset + int(np.round((timestamps[i] + 0.5) * self.fps)) + spacing:frame_offset + int(np.round((timestamps[i + 1] + 0.5) * self.fps)) - spacing] = 1.0
+      self.label[ts_classes[-1], frame_offset + int(np.round((timestamps[-1] + 0.5) * self.fps)) + spacing:frame_offset + frames] = 1.0
       for i in range(len(timestamps)):
         self.label[ts_classes[i], frame_offset:frame_offset + frames] += torch.exp(-0.5 * (((timestamps[i] + 0.5) * self.fps + spacing - frame_indices) / self.sigma) ** 2)
       for i in range(len(timestamps) - 1):
         self.label[ts_classes[i], frame_offset:frame_offset + frames] += torch.exp(-0.5 * (((timestamps[i + 1] + 0.5) * self.fps - spacing - frame_indices) / self.sigma) ** 2)
       frame_offset += frames
 
-    class_sum = self.label.sum(dim=0, keepdim=True)
-    self.label /= torch.max(class_sum, torch.full_like(class_sum, 1e-8))
+    self.label /= self.label.sum(dim=0, keepdim=True)
 
   def __len__(self):
     return self.total_data_count
