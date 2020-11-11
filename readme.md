@@ -2,7 +2,6 @@
 > * 팀장: 이예림
 > * 팀원: 고준규 고현성 이연경 이진우
 # 프로젝트 소개
-> ### 뉴스 클립 편집점 추출
 > > 본 프로젝트는 평소 유튜브 영상을 보면 아래와 같이 특정 시간에 사용자들이 time stamp를 만들고 해당 time stamp와 관련된 내용을 적어놓는 상황을 볼 수 있다. 
 
 > > ![sample1](/pic/youtube_img.PNG)
@@ -46,5 +45,5 @@
 
 # 모델
 > * 'SlowFast Networks for Video Recognition', 'ICCV-2019'에 소개된 모델을 사용
-> * ![network](/pic/network.png)
+> ![network](/pic/network.png)
 
