@@ -1,11 +1,11 @@
 @font-face {
     font-family: 'Spoqa Han Sans Bold';
-    src: url('fonts/Spoqa_Han_Sans_Bold.ttf') format('truetype');
+    src: url('./fonts/Spoqa_Han_Sans_Bold.ttf') format('truetype');
 }
 
 @font-face {
     font-family: 'Spoqa Han Sans Regular';
-    src: url('fonts/Spoqa_Han_Sans_Regular.ttf') format('truetype');
+    src: url('./fonts/Spoqa_Han_Sans_Regular.ttf') format('truetype');
 }
 
 body {
