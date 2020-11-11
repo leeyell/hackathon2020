@@ -45,5 +45,6 @@
 
 # 모델
 > * 'SlowFast Networks for Video Recognition', 'ICCV-2019'에 소개된 모델을 사용
+
 > ![network](/pic/network.png)
 
