@@ -90,13 +90,13 @@ class SlowFast(nn.Module):
         self.slow_res5 = self._make_layer_slow(
             block, 512, layers[3], stride=2, head_conv=3)
         self.dp = nn.Dropout(dropout)
-        self.fc = nn.Linear(self.fast_inplanes+2048, class_num*24, bias=False)      # 클래스 4개에 대한 24 프레임의 값...
+        self.fc = nn.Linear(self.fast_inplanes+2048, class_num, bias=False)
 
 
 
     def forward(self, input):
-        fast, lateral = self.FastPath(input[:, :, ::2, :, :])
-        slow = self.SlowPath(input[:, :, ::16, :, :], lateral)
+        fast, lateral = self.FastPath(input[:, :, ::1, :, :])
+        slow = self.SlowPath(input[:, :, ::8, :, :], lateral)
         x = torch.cat([slow, fast], dim=1)
         x = self.dp(x)
         x = self.fc(x)
