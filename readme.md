@@ -1,6 +1,6 @@
 # Team VCL (Victory Congratulation Lab)
-> * 팀장: 이예림
-> * 팀원: 고준규 고현성 이연경 이진우
+* 팀장: 이예림
+* 팀원: 고준규 고현성 이연경 이진우
 
 ***
 
